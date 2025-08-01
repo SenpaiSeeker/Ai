@@ -99,8 +99,7 @@ async def handle_inline_query(client: Client, inline_query: InlineQuery):
         InlineQueryResultArticle(
             title="Tanya Gemini (Klik untuk Kirim)",
             description=f"Prompt: {query[:50]}...",
-            input_message_content=InputTextMessageContent(placeholder_text),
-            thumb_url="https://i.imgur.com/nwJdA52.png",
+            input_message_content=InputTextMessageContent(placeholder_text)
         )
     ]
     await inline_query.answer(results=results, cache_time=1)
