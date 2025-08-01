@@ -3,7 +3,7 @@ import asyncio
 from dotenv import load_dotenv
 
 import pyrogram
-from pyrogram import Client, filters, enums
+from pyrogram import Client, filters
 from pyrogram.types import (
     Message,
     InlineQuery,
@@ -29,7 +29,11 @@ app = Client(
     bot_token=BOT_TOKEN,
 )
 
-db = app.ns.db(storage_type="local")
+db = app.ns.db(
+    storage_type="local",
+    file_name="gemini_chat_history",
+    keys_encrypt="kunci_rahasia_untuk_db_chat",
+)
 
 chatbot = app.ns.gemini(api_key=GEMINI_API_KEY)
 
@@ -58,7 +62,7 @@ async def clear_command(client: Client, message: Message):
     await message.reply_text("✅ Riwayat percakapan Anda telah berhasil dihapus.")
 
 
-@app.on_message(filters.text & filters.private & ~filters.command(None))
+@app.on_message(filters.text & filters.private)
 async def handle_chat(client: Client, message: Message):
     user_id = message.from_user.id
     user_input = message.text
@@ -129,7 +133,7 @@ async def handle_inline_query(client: Client, inline_query: InlineQuery):
                 [edit_query_button, new_query_button]
             ]
         )
-
+        
         results = [
             InlineQueryResultArticle(
                 title="Kirim Jawaban dari Gemini AI",
