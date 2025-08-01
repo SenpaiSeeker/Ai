@@ -51,7 +51,10 @@ async def handle_inline_query(client: Client, inline_query: InlineQuery):
         InlineQueryResultArticle(
             title="Tanya Gemini (Klik untuk Kirim)",
             description=f"Prompt: {query[:50]}...",
-            input_message_content=InputTextMessageContent(placeholder_text),
+            input_message_content=InputTextMessageContent(
+                message_text=placeholder_text,
+                parse_mode=pyrogram.enums.ParseMode.MARKDOWN
+            ),
             thumb_url="https://i.imgur.com/nwJdA52.png",
         )
     ]
@@ -61,10 +64,10 @@ async def handle_inline_query(client: Client, inline_query: InlineQuery):
 @app.on_message(
     filters.via_bot &
     filters.text &
-    filters.regex(r"^🤔 \*\*Prompt:\*\*\n`(.+?)`\n\n💡 \*\*Jawaban Gemini:\*\*\n\*Sedang memproses\.\.\.\*")
+    filters.regex(r"^🤔 Prompt:\n(.+?)\n\n💡 Jawaban Gemini:\nSedang memproses\.\.\.")
 )
 async def edit_inline_response(client: Client, message: Message):
-    if message.via_bot.id != client.me.id:
+    if not message.via_bot or message.via_bot.id != client.me.id:
         return
 
     original_query = message.matches[0].group(1)
@@ -80,7 +83,10 @@ async def edit_inline_response(client: Client, message: Message):
         
         final_text = f"🤔 **Prompt:**\n`{original_query}`\n\n💡 **Jawaban Gemini:**\n{response_text}"
         
-        await message.edit_text(final_text)
+        await message.edit_text(
+            text=final_text,
+            parse_mode=pyrogram.enums.ParseMode.MARKDOWN
+        )
 
     except Exception as e:
         app.ns.log.error(f"Error saat edit inline response: {e}")
