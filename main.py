@@ -72,7 +72,7 @@ async def inline_query_handler(event):
             text=final_text,
             link_preview=False,
             buttons=final_buttons,
-            thumb=builder.photo(file="https://files.catbox.moe/ozzvtz.jpg")
+            thumb="https://files.catbox.moe/ozzvtz.jpg"
         )
 
         await event.answer([final_article])
