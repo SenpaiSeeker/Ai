@@ -1,4 +1,5 @@
 import os
+import uuid  # Pastikan untuk mengimpor ini
 import asyncio
 from dotenv import load_dotenv
 
@@ -47,6 +48,8 @@ async def handle_inline_query(client: Client, inline_query: InlineQuery):
     if not query:
         return
 
+    result_id = uuid.uuid4().hex
+
     async def process_and_update():
         try:
             def get_response_sync():
@@ -67,6 +70,7 @@ async def handle_inline_query(client: Client, inline_query: InlineQuery):
 
             final_result = [
                 InlineQueryResultArticle(
+                    id=result_id,
                     title="Jawaban dari Gemini AI",
                     description=response_text.replace("\n", " ")[:60],
                     input_message_content=InputTextMessageContent(final_text),
@@ -86,7 +90,7 @@ async def handle_inline_query(client: Client, inline_query: InlineQuery):
 
     placeholder_result = [
         InlineQueryResultArticle(
-            id="processing",
+            id=result_id,
             title="⏳ Memproses...",
             description="AI sedang berpikir, harap tunggu sebentar.",
             input_message_content=InputTextMessageContent("Sedang menunggu jawaban dari AI...")
@@ -95,8 +99,8 @@ async def handle_inline_query(client: Client, inline_query: InlineQuery):
     
     try:
         await inline_query.answer(results=placeholder_result, cache_time=1, is_personal=True)
-    except QueryIdInvalid as e:
-      log.error(e)
+    except QueryIdInvalid:
+        pass
 
 
 if __name__ == "__main__":
