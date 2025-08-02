@@ -34,8 +34,7 @@ db = app.ns.db(storage_type="local")
 
 chatbot = app.ns.gemini(api_key=GEMINI_API_KEY)
 
-log = app.ns.log()
-log.fmt = "{asctime} {levelname} {message}"
+log = app.ns.log(fmt="{asctime} {levelname} {message}")
 
 
 @app.on_message(filters.command("start") & filters.private)
