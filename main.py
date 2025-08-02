@@ -66,7 +66,7 @@ async def handle_inline_query(client: Client, inline_query: InlineQuery):
 
     callback_data = f"get_gem:{query_id}"
     
-    placeholder_text = f"🤔 **Prompt:**\n`{query}`\n\n___Klik tombol di bawah untuk memproses...___"
+    placeholder_text = f"🤔 **Prompt:**\n`{query}`\n\n__Klik tombol di bawah untuk memproses...__"
     
     button_data = [
         {
