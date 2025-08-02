@@ -17,6 +17,7 @@ from telegram.ext import (
     ContextTypes,
 )
 from telegram.constants import ParseMode
+from telegram.error import TelegramError
 
 import nsdev
 
@@ -43,23 +44,6 @@ async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     result_id = str(uuid.uuid4())
 
-    placeholder_result = [
-        InlineQueryResultArticle(
-            id=result_id,
-            title="⏳ Memproses...",
-            description="AI sedang berpikir, harap tunggu sebentar.",
-            input_message_content=InputTextMessageContent("Sedang menunggu jawaban dari AI...")
-        )
-    ]
-    await update.inline_query.answer(placeholder_result, cache_time=1)
-
-    asyncio.create_task(
-        get_ai_answer_and_update(update, context, query, result_id)
-    )
-
-async def get_ai_answer_and_update(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, query: str, result_id: str
-) -> None:
     try:
         def get_response_sync():
             return chatbot.send_chat_message(
@@ -94,11 +78,12 @@ async def get_ai_answer_and_update(
                 thumbnail_height=64,
             )
         ]
-
         await update.inline_query.answer(final_result, cache_time=1)
 
+    except TelegramError as e:
+        log.warning(f"TelegramError saat menjawab inline query: {e}")
     except Exception as e:
-        log.error(f"Error pada background task inline: {e}")
+        log.error(f"Error pada handler inline_query: {e}")
         try:
             error_result = [
                 InlineQueryResultArticle(
