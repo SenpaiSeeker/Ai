@@ -33,6 +33,7 @@ app = Client(
 db = app.ns.db(storage_type="local")
 
 chatbot = app.ns.gemini(api_key=GEMINI_API_KEY)
+log = app.ns.log()
 
 
 @app.on_message(filters.command("start") & filters.private)
@@ -111,7 +112,7 @@ async def answer_from_inline(client: Client, callback_query: CallbackQuery):
     try:
         await callback_query.edit_message_text(f"🤔 **Prompt:**\n`{query}`\n\n⏳ __AI sedang memproses, harap tunggu...__")
     except Exception as e:
-        app.ns.log.warning(f"Gagal edit pesan awal callback: {e}")
+        log.warning(f"Gagal edit pesan awal callback: {e}")
 
     try:
         history = db.getVars(user_id, "GEMINI_HISTORY") or []
@@ -147,12 +148,12 @@ async def answer_from_inline(client: Client, callback_query: CallbackQuery):
         await callback_query.edit_message_text(final_text, reply_markup=final_markup)
 
     except Exception as e:
-        app.ns.log.error(f"Error pada callback inline: {e}")
+        log.error(f"Error pada callback inline: {e}")
         await callback_query.edit_message_text(
             f"❌ **Terjadi Kesalahan**\n\nMaaf, saya tidak dapat memproses permintaan untuk prompt:\n`{query}`"
         )
 
 
 if __name__ == "__main__":
-    app.ns.log.print(f"{app.ns.log.GREEN}Bot Gemini sedang berjalan...")
+    log.print(f"{log.GREEN}Bot Gemini sedang berjalan...")
     app.run()
