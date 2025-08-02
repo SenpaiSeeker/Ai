@@ -1,108 +1,118 @@
 import os
-import uuid
 import asyncio
 from dotenv import load_dotenv
 
-import pyrogram
-from pyrogram import Client, filters
-from pyrogram.types import (
-    Message,
-    InlineQuery,
-    InlineQueryResultArticle,
-    InputTextMessageContent,
-)
-from pyrogram.errors import QueryIdInvalid
+# Impor dari Telethon
+from telethon import TelegramClient, events, Button
 
 import nsdev
 
 load_dotenv()
 
-API_ID = os.getenv("API_ID")
+# Konfigurasi tetap sama
+API_ID = int(os.getenv("API_ID")) # Telethon butuh integer
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
-app = Client(
-    "gemini_bot",
-    api_id=API_ID,
-    api_hash=API_HASH,
-    bot_token=BOT_TOKEN,
-)
+# Inisialisasi Klien Telethon
+# 'gemini_bot.session' akan dibuat untuk menyimpan sesi
+app = TelegramClient("gemini_bot", API_ID, API_HASH)
 
-chatbot = app.ns.gemini(api_key=GEMINI_API_KEY)
-log = app.ns.log()
+# Inisialisasi norsodikin (tidak terintegrasi otomatis, kita panggil manual)
+chatbot = nsdev.ChatbotGemini(api_key=GEMINI_API_KEY)
+log = nsdev.LoggerHandler()
+button_builder = nsdev.Button() # Kita tidak bisa pakai client.ns, jadi panggil langsung
 
 
-@app.on_message(filters.command("start") & filters.private)
-async def start_command(client: Client, message: Message):
-    await message.reply_text(
-        f"👋 Halo, {message.from_user.first_name}!\n\n"
+@app.on(events.NewMessage(pattern='/start', func=lambda e: e.is_private))
+async def start_handler(event):
+    me = await app.get_me()
+    await event.respond(
+        f"👋 Halo, {event.sender.first_name}!\n\n"
         "Saya adalah bot AI Gemini yang bekerja via inline.\n\n"
-        f"Ketik `@{(await client.get_me()).username} [pertanyaan]` di chat manapun untuk mendapatkan jawaban langsung."
+        f"Ketik `@{me.username} [pertanyaan]` di chat manapun untuk mendapatkan jawaban langsung."
     )
 
 
-@app.on_inline_query()
-async def handle_inline_query(client: Client, inline_query: InlineQuery):
-    query = inline_query.query.strip()
+@app.on(events.InlineQuery)
+async def inline_query_handler(event):
+    query = event.text.strip()
     if not query:
         return
 
-    result_id = uuid.uuid4().hex
+    # Builder adalah cara mudah Telethon untuk membuat hasil inline
+    builder = event.builder
 
-    async def process_and_update():
-        try:
-            def get_response_sync():
-                return chatbot.send_chat_message(
-                    message=query,
-                    user_id=f"inline_{inline_query.from_user.id}",
-                    bot_name="GeminiBot"
-                )
-            response_text = await asyncio.to_thread(get_response_sync)
-            
-            final_text = f"🤔 **Prompt:**\n`{query}`\n\n💡 **Jawaban Gemini:**\n{response_text}"
-            
-            buttons_data = [
-                {"text": "✏️ Ubah & Tanya Lagi", "switch_inline_query_current_chat": query},
-                {"text": "💬 Tanya Baru", "switch_inline_query_current_chat": ""}
-            ]
-            final_markup = client.ns.button.build_button_grid(buttons=buttons_data, row_width=2)
+    # Ini adalah hasil placeholder yang langsung dikirim
+    placeholder = builder.article(
+        title='⏳ Memproses...',
+        description='AI sedang berpikir, harap tunggu sebentar.',
+        text='Sedang menunggu jawaban dari AI...'
+    )
 
-            final_result = [
-                InlineQueryResultArticle(
-                    id=result_id,
-                    title="Jawaban dari Gemini AI",
-                    description=response_text.replace("\n", " ")[:60],
-                    input_message_content=InputTextMessageContent(final_text),
-                    thumb_url="https://files.catbox.moe/ozzvtz.jpg",
-                    reply_markup=final_markup,
-                )
-            ]
-            
-            await inline_query.answer(results=final_result, cache_time=1)
-        
-        except QueryIdInvalid:
-            log.warning(f"Query ID {inline_query.id} expired, update dibatalkan.")
-        except Exception as e:
-            log.error(f"Error pada proses background inline query: {e}")
-
-    asyncio.create_task(process_and_update())
-
-    placeholder_result = [
-        InlineQueryResultArticle(
-            id=result_id,
-            title="⏳ Memproses...",
-            description="AI sedang berpikir, harap tunggu sebentar.",
-            input_message_content=InputTextMessageContent("Sedang menunggu jawaban dari AI...")
-        )
-    ]
-    
     try:
-        await inline_query.answer(results=placeholder_result, cache_time=1, is_personal=True)
-    except QueryIdInvalid:
-        pass
+        # Kirim placeholder SEGERA
+        await event.answer([placeholder])
+    except Exception:
+        # Jika pengguna mengetik terlalu cepat, abaikan saja
+        return
+
+    # SEKARANG, proses permintaan AI di background.
+    # Tidak perlu asyncio.create_task(), Telethon menangani ini dengan baik.
+    try:
+        def get_response_sync():
+            return chatbot.send_chat_message(
+                message=query,
+                user_id=f"inline_{event.sender_id}",
+                bot_name="GeminiBot"
+            )
+        response_text = await asyncio.to_thread(get_response_sync)
+        
+        final_text = f"🤔 **Prompt:**\n`{query}`\n\n💡 **Jawaban Gemini:**\n{response_text}"
+
+        # Membuat tombol dengan sintaks Telethon
+        final_buttons = [
+            [
+                Button.switch_inline("✏️ Ubah & Tanya Lagi", query, current_chat=True),
+                Button.switch_inline("💬 Tanya Baru", "", current_chat=True)
+            ]
+        ]
+        
+        # Buat hasil final
+        final_article = builder.article(
+            title="Jawaban dari Gemini AI",
+            description=response_text.replace("\n", " ")[:60],
+            text=final_text,
+            link_preview=False, # Supaya tidak ada preview link
+            buttons=final_buttons,
+            thumb=builder.photo(file="https://files.catbox.moe/ozzvtz.jpg")
+        )
+
+        # KIRIM JAWABAN FINAL UNTUK MENGGANTIKAN PLACEHOLDER
+        # Telethon akan secara otomatis memperbarui hasil di menu pengguna.
+        await event.answer([final_article])
+
+    except Exception as e:
+        log.error(f"Error pada inline query handler: {e}")
+        # Jika terjadi error, kita juga bisa memperbarui hasilnya
+        error_article = builder.article(
+            title="❌ Terjadi Kesalahan",
+            description="Tidak dapat memproses permintaan Anda.",
+            text=f"❌ Gagal memproses prompt: `{query}`"
+        )
+        try:
+            await event.answer([error_article])
+        except Exception:
+            pass # Abaikan jika query sudah tidak valid
 
 
-if __name__ == "__main__":
-    log.print(f"{log.GREEN}Bot Gemini sedang berjalan...")
-    app.run()
+async def main():
+    """Fungsi utama untuk menjalankan bot."""
+    await app.start(bot_token=BOT_TOKEN)
+    log.print(f"{log.GREEN}Bot Gemini (Telethon) sedang berjalan...")
+    await app.run_until_disconnected()
+
+
+if __name__ == '__main__':
+    asyncio.run(main())
