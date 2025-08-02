@@ -1,5 +1,5 @@
 import os
-import uuid  # Pastikan untuk mengimpor ini
+import uuid
 import asyncio
 from dotenv import load_dotenv
 
