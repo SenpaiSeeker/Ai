@@ -1,100 +1,126 @@
 import os
+import uuid
 import asyncio
 from dotenv import load_dotenv
 
-from telethon import TelegramClient, events, Button
+from telegram import (
+    Update,
+    InlineQueryResultArticle,
+    InputTextMessageContent,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+)
+from telegram.ext import (
+    Application,
+    CommandHandler,
+    InlineQueryHandler,
+    ContextTypes,
+)
+from telegram.constants import ParseMode
 
 import nsdev
 
 load_dotenv()
 
-API_ID = int(os.getenv("API_ID"))
-API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-app = TelegramClient("gemini_bot", API_ID, API_HASH)
 
 chatbot = nsdev.ChatbotGemini(api_key=GEMINI_API_KEY)
 log = nsdev.LoggerHandler()
 
-
-@app.on(events.NewMessage(pattern='/start', func=lambda e: e.is_private))
-async def start_handler(event):
-    me = await app.get_me()
-    await event.respond(
-        f"👋 Halo, {event.sender.first_name}!\n\n"
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    user = update.effective_user
+    await update.message.reply_html(
+        f"👋 Halo, {user.mention_html()}!\n\n"
         "Saya adalah bot AI Gemini yang bekerja via inline.\n\n"
-        f"Ketik `@{me.username} [pertanyaan]` di chat manapun untuk mendapatkan jawaban langsung."
+        f"Ketik <code>@{context.bot.username} [pertanyaan]</code> di chat manapun untuk mendapatkan jawaban langsung."
     )
 
-
-@app.on(events.InlineQuery)
-async def inline_query_handler(event):
-    query = event.text.strip()
+async def inline_query(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    query = update.inline_query.text.strip()
     if not query:
         return
 
-    builder = event.builder
+    result_id = str(uuid.uuid4())
 
-    placeholder = builder.article(
-        title='⏳ Memproses...',
-        description='AI sedang berpikir, harap tunggu sebentar.',
-        text='Sedang menunggu jawaban dari AI...'
+    placeholder_result = [
+        InlineQueryResultArticle(
+            id=result_id,
+            title="⏳ Memproses...",
+            description="AI sedang berpikir, harap tunggu sebentar.",
+            input_message_content=InputTextMessageContent("Sedang menunggu jawaban dari AI...")
+        )
+    ]
+    await update.inline_query.answer(placeholder_result, cache_time=1)
+
+    asyncio.create_task(
+        get_ai_answer_and_update(update, context, query, result_id)
     )
 
-    try:
-        await event.answer([placeholder])
-    except Exception:
-        return
-
+async def get_ai_answer_and_update(
+    update: Update, context: ContextTypes.DEFAULT_TYPE, query: str, result_id: str
+) -> None:
     try:
         def get_response_sync():
             return chatbot.send_chat_message(
                 message=query,
-                user_id=f"inline_{event.sender_id}",
+                user_id=f"inline_{update.inline_query.from_user.id}",
                 bot_name="GeminiBot"
             )
         response_text = await asyncio.to_thread(get_response_sync)
         
         final_text = f"🤔 **Prompt:**\n`{query}`\n\n💡 **Jawaban Gemini:**\n{response_text}"
-
-        final_buttons = [
+        
+        keyboard = [
             [
-                Button.switch_inline("✏️ Ubah & Tanya Lagi", query, same_peer=True),
-                Button.switch_inline("💬 Tanya Baru", "", same_peer=True)
+                InlineKeyboardButton("✏️ Ubah & Tanya Lagi", switch_inline_query_current_chat=query),
+                InlineKeyboardButton("💬 Tanya Baru", switch_inline_query_current_chat="")
             ]
         ]
-        
-        final_article = builder.article(
-            title="Jawaban dari Gemini AI",
-            description=response_text.replace("\n", " ")[:60],
-            text=final_text,
-            link_preview=False,
-            buttons=final_buttons,
-            thumb="https://files.catbox.moe/ozzvtz.jpg"
-        )
+        final_markup = InlineKeyboardMarkup(keyboard)
 
-        await event.answer([final_article])
+        final_result = [
+            InlineQueryResultArticle(
+                id=result_id,
+                title="Jawaban dari Gemini AI",
+                description=response_text.replace("\n", " ")[:60],
+                input_message_content=InputTextMessageContent(
+                    final_text,
+                    parse_mode=ParseMode.MARKDOWN
+                ),
+                reply_markup=final_markup,
+                thumbnail_url="https://files.catbox.moe/ozzvtz.jpg",
+                thumbnail_width=64,
+                thumbnail_height=64,
+            )
+        ]
+
+        await update.inline_query.answer(final_result, cache_time=1)
 
     except Exception as e:
-        log.error(f"Error pada inline query handler: {e}")
-        error_article = builder.article(
-            title="❌ Terjadi Kesalahan",
-            description="Tidak dapat memproses permintaan Anda.",
-            text=f"❌ Gagal memproses prompt: `{query}`"
-        )
+        log.error(f"Error pada background task inline: {e}")
         try:
-            await event.answer([error_article])
+            error_result = [
+                InlineQueryResultArticle(
+                    id=result_id,
+                    title="❌ Terjadi Kesalahan",
+                    description="Tidak dapat memproses permintaan Anda.",
+                    input_message_content=InputTextMessageContent(f"❌ Gagal memproses prompt: `{query}`")
+                )
+            ]
+            await update.inline_query.answer(error_result, cache_time=1)
         except Exception:
             pass
 
+def main() -> None:
+    application = Application.builder().token(BOT_TOKEN).build()
 
-async def main():
-    await app.start(bot_token=BOT_TOKEN)
-    log.print(f"{log.GREEN}Bot Gemini (Telethon) sedang berjalan...")
-    await app.run_until_disconnected()
+    application.add_handler(CommandHandler("start", start))
+    application.add_handler(InlineQueryHandler(inline_query))
+
+    log.print(f"{log.GREEN}Bot Gemini (python-telegram-bot) sedang berjalan...")
+    application.run_polling()
 
 
-if __name__ == '__main__':
-    asyncio.run(main())
+if __name__ == "__main__":
+    main()
