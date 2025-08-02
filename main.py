@@ -33,7 +33,7 @@ app = Client(
 
 db = app.ns.db(storage_type="local")
 chatbot = app.ns.gemini(api_key=GEMINI_API_KEY)
-log = app.ns.log
+log = app.ns.log()
 
 async def process_and_cache_gemini(user_id: int, query: str):
     log.info(f"Memulai pre-fetching untuk user {user_id} dengan query: {query[:30]}...")
